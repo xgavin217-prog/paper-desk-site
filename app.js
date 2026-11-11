@@ -194,9 +194,29 @@ function viewAccount() {
   <div class="card pad0"><a class="row" href="${esc(a.profile_url)}" target="_blank" rel="noopener"><div class="l"><b>Your FOMO profile</b><div class="muted small">@${esc(a.fomo_handle)}</div></div><div class="r">›</div></a>
     <a class="row" id="invite" href="${esc(a.signup_url)}"><div class="l"><b>Invite a friend</b><div class="muted small">Share your FOMO signup link</div></div><div class="r">›</div></a>
     <div class="row"><div class="l"><b>Morning report</b></div><div class="r">${a.report_url ? `<a href="${esc(a.report_url)}" class="up">open</a>` : "none yet"}</div></div></div>
-  <h2>Settings</h2><p class="muted small" style="margin-top:-4px">Read-only snapshot. Change via Telegram: <span class="mono">set stop to -8%</span>.</p>${grp}
+  <div class="card pad0" id="wp"><div class="row"><div class="l"><b>Web push</b><div class="muted small" id="wpmsg">Telegram is the main channel. Web push adds the same pushes to this device.</div></div></div>
+    <div style="padding:0 14px 12px"><button class="btn c" id="wpbtn">Enable web push</button><textarea id="wpsub" class="mono" readonly hidden rows="4" style="width:100%;background:#000;color:#fff;border:1px solid rgba(84,84,88,.55);border-radius:10px;padding:8px;font-size:11px"></textarea><button class="btn b" id="wpcopy" hidden>Copy · then send it to the Telegram bot</button></div></div>
+  <h2>Settings</h2><p class="muted small" style="margin-top:-4px">Read-only snapshot. Change via Telegram: <span class="mono">set stop to -8%</span>, <span class="mono">set min_liquidity_usd 50000</span>, <span class="mono">settings</span> lists them all.</p>${grp}
   <p class="muted small" style="text-align:center">PAPER since ${a.paper_since ? new Date(a.paper_since * 1000).toLocaleString("en-US", {timeZone: TZ, dateStyle: "medium", timeStyle: "short"}) + " PT" : "—"}<br>Public static page · no login · fictitious data only</p>`;
+  setupPush(a.push_key);
   $("#invite").onclick = async (e) => { if (navigator.share) { e.preventDefault(); try { await navigator.share({title: "FOMO", url: a.signup_url}); } catch (_) {} } };
+}
+
+// Web push without a server: the browser makes the subscription, you paste it to the Telegram bot (the static site cannot post it to the desk).
+function b64u(s) { const p = "=".repeat((4 - s.length % 4) % 4), b = atob((s + p).replace(/-/g, "+").replace(/_/g, "/")); return Uint8Array.from(b, (c) => c.charCodeAt(0)); }
+async function setupPush(key) {
+  const msg = $("#wpmsg"), btn = $("#wpbtn"), box = $("#wpsub"), cp = $("#wpcopy");
+  if (!("serviceWorker" in navigator && "PushManager" in window && "Notification" in window)) { msg.textContent = "This browser can't do web push here. On iPhone: Share → Add to Home Screen, then open the app from the Home Screen."; btn.hidden = true; return; }
+  const show = (sub) => { const j = sub.toJSON(); box.value = "webpush " + JSON.stringify({endpoint: j.endpoint, keys: j.keys}); box.hidden = false; cp.hidden = false; msg.textContent = "Subscribed in this browser. It only reaches the desk when you send the text below to the Telegram bot (the static site can't post it)."; btn.textContent = "Re-create subscription"; };
+  cp.onclick = async () => { box.select(); try { await navigator.clipboard.writeText(box.value); cp.textContent = "Copied. Now paste it to the bot"; } catch (_) { cp.textContent = "Select the text above and copy it"; } };
+  try { const reg = await navigator.serviceWorker.ready, ex = await reg.pushManager.getSubscription(); if (ex) show(ex); } catch (_) {}
+  btn.onclick = async () => {
+    try {
+      if ((await Notification.requestPermission()) !== "granted") { msg.textContent = "Notifications are blocked for this site. Allow them in the browser or iOS settings, then try again."; return; }
+      const reg = await navigator.serviceWorker.ready;
+      show(await reg.pushManager.getSubscription() || await reg.pushManager.subscribe({userVisibleOnly: true, applicationServerKey: b64u(key)}));
+    } catch (e) { msg.textContent = "Couldn't subscribe: " + (e && e.name || "error") + (e && e.message ? " · " + e.message : ""); }
+  };
 }
 
 function viewAudit(mint) {
