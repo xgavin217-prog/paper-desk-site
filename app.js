@@ -9,6 +9,10 @@ const num = (n, d = 2) => Number(n).toLocaleString("en-US", {minimumFractionDigi
 const px = (p) => (p == null ? "—" : p >= 1 ? p.toFixed(4) : p >= 0.01 ? p.toFixed(5) : Number(p).toPrecision(4));
 const TZ = "America/Los_Angeles";
 const tfmt = (ts) => new Date(ts * 1000).toLocaleTimeString("en-US", {timeZone: TZ, hour: "numeric", minute: "2-digit"});
+const tscrub = (ts) => {
+  const long = range === "1W" || range === "ALL";
+  return new Date(ts * 1000).toLocaleString("en-US", {timeZone: TZ, ...(long ? {month: "short", day: "numeric"} : {}), hour: "numeric", minute: "2-digit"}) + " PT";
+};
 const ago = (ts) => { if (!ts) return "never"; const s = Math.max(0, Math.round(Date.now() / 1000 - ts)); return s < 60 ? s + "s ago" : s < 3600 ? Math.round(s / 60) + "m ago" : s < 86400 ? Math.round(s / 3600) + "h ago" : Math.round(s / 86400) + "d ago"; };
 const STALE_S = 25 * 60;
 const FILES = ["state", "chart", "activity", "account", "settings", "agents", "coins"];
@@ -46,21 +50,75 @@ function odometer(el, text) {
 
 // ---------- charts
 const RANGES = {LIVE: 1800, "1H": 3600, "4H": 14400, "1D": 86400, "1W": 604800, ALL: Infinity};
+let eqScrub = null, eqGeom = null, cdlScrub = null, cdlGeom = null, cdlLive = null;
+const scrubbing = () => eqScrub != null || cdlScrub != null;
+function haptic() { try { if (navigator.vibrate) navigator.vibrate(10); } catch (_) {} }
+
+function bindPointerScrub(el, onMove, onEnd) {
+  if (!el) return;
+  el.classList.add("scrub");
+  el.style.touchAction = "none";
+  let down = false;
+  el.addEventListener("pointerdown", (e) => { down = true; try { el.setPointerCapture(e.pointerId); } catch (_) {} e.preventDefault(); onMove(e); }, {passive: false});
+  el.addEventListener("pointermove", (e) => { onMove(e); });
+  el.addEventListener("pointerup", (e) => {
+    down = false; try { el.releasePointerCapture(e.pointerId); } catch (_) {}
+    if (e.pointerType === "touch" || e.pointerType === "pen") onEnd();
+  });
+  el.addEventListener("pointercancel", () => { down = false; onEnd(); });
+  el.addEventListener("pointerleave", () => { if (!down) onEnd(); });
+}
+
+function nearest(xs, x) {
+  let best = 0, bestD = Infinity;
+  xs.forEach((v, i) => { const d = Math.abs(v - x); if (d < bestD) { bestD = d; best = i; } });
+  return best;
+}
+
+function equityHeader(p) {
+  const bal = $("#bal"), pct = $("#chg-pct"), pill = $("#chg-pill"), sub = $("#chg-sub");
+  if (!bal) return;
+  if (!p) {
+    const paper = D.state.paper, up = paper.today_pct >= 0;
+    bal.dataset.v = ""; bal.innerHTML = "";
+    odometer(bal, money(paper.equity_usd));
+    if (pct) { pct.className = up ? "up" : "dn"; pct.textContent = `${up ? "+" : ""}${num(paper.today_pct)}% today`; }
+    if (pill) { pill.hidden = false; pill.className = `pill ${paper.multiple >= 1 ? "grn" : "red"}`; pill.textContent = `${num(paper.multiple, Math.abs(paper.multiple - 1) < 0.01 ? 3 : 2)}×`; }
+    if (sub) sub.textContent = "start " + money(paper.start_usd);
+    return;
+  }
+  bal.dataset.v = money(p.equity_usd); bal.textContent = money(p.equity_usd);
+  const base = eqGeom.pts[0].equity_usd, dlt = p.equity_usd - base, up = dlt >= 0, pr = base ? (dlt / base) * 100 : 0;
+  if (pct) { pct.className = up ? "up" : "dn"; pct.textContent = `${up ? "+" : "-"}${money(Math.abs(dlt))} (${up ? "+" : ""}${num(pr)}%)`; }
+  if (pill) pill.hidden = true;
+  if (sub) sub.textContent = tscrub(p.ts);
+}
+
+function crosshair(g, x, y, top, bot, fill) {
+  g.save(); g.setLineDash([]); g.strokeStyle = "rgba(255,255,255,.55)"; g.lineWidth = 1;
+  g.beginPath(); g.moveTo(x, top); g.lineTo(x, bot); g.stroke();
+  g.fillStyle = "#fff"; g.beginPath(); g.arc(x, y, 6, 0, 7); g.fill();
+  g.fillStyle = fill || "#00d35a"; g.beginPath(); g.arc(x, y, 3.8, 0, 7); g.fill();
+  g.restore();
+}
+
 function drawEquity(canvas) {
   const [g, W, H] = setup(canvas, 220), now = Date.now() / 1000;
   const span = RANGES[range];
   let pts = D.chart.points.filter((p) => span === Infinity || p.ts >= now - span);
   if (pts.length < D.chart.points.length && pts.length) { const prev = D.chart.points.filter((p) => p.ts < now - span).pop(); if (prev) pts = [{ts: now - span, equity_usd: prev.equity_usd}, ...pts]; }
   g.clearRect(0, 0, W, H);
-  if (!pts.length) { g.fillStyle = "#8e8e93"; g.font = "14px " + getComputedStyle(document.body).fontFamily; g.textAlign = "center"; g.fillText("No balance data in this range", W / 2, H / 2); return; }
+  if (!pts.length) { eqGeom = null; g.fillStyle = "#8e8e93"; g.font = "14px " + getComputedStyle(document.body).fontFamily; g.textAlign = "center"; g.fillText("No balance data in this range", W / 2, H / 2); return; }
   const start = D.chart.start_usd, last = pts[pts.length - 1];
   const x0 = pts[0].ts, x1 = Math.max(now, last.ts);
+  if (x1 > last.ts + 1) pts = pts.concat([{ts: x1, equity_usd: last.equity_usd}]);
   const ys = pts.map((p) => p.equity_usd).concat([start]);
   let lo = Math.min(...ys), hi = Math.max(...ys); const padv = Math.max((hi - lo) * 0.2, 0.5); lo -= padv; hi += padv;
   const L = 6, R = 6, T = 26, B = 16;
   const X = (t) => L + (W - L - R) * (t - x0) / Math.max(1, x1 - x0), Y = (v) => T + (H - T - B) * (1 - (v - lo) / (hi - lo));
+  eqGeom = {pts, X, Y, x0, x1, W, H, L, R, T, B};
   g.strokeStyle = "rgba(84,84,88,.55)"; g.setLineDash([3, 5]); g.lineWidth = 1; g.beginPath(); g.moveTo(L, Y(start)); g.lineTo(W - R, Y(start)); g.stroke(); g.setLineDash([]);
-  const path = () => { g.beginPath(); g.moveTo(X(pts[0].ts), Y(pts[0].equity_usd)); pts.forEach((p, i) => { if (i) { g.lineTo(X(p.ts), Y(pts[i - 1].equity_usd)); g.lineTo(X(p.ts), Y(p.equity_usd)); } }); g.lineTo(X(x1), Y(last.equity_usd)); };
+  const path = () => { g.beginPath(); g.moveTo(X(pts[0].ts), Y(pts[0].equity_usd)); pts.forEach((p, i) => { if (i) { g.lineTo(X(p.ts), Y(pts[i - 1].equity_usd)); g.lineTo(X(p.ts), Y(p.equity_usd)); } }); };
   path(); g.lineTo(X(x1), H - B); g.lineTo(X(pts[0].ts), H - B); g.closePath();
   const gr = g.createLinearGradient(0, T, 0, H - B); gr.addColorStop(0, "rgba(0,211,90,.28)"); gr.addColorStop(1, "rgba(0,211,90,0)"); g.fillStyle = gr; g.fill();
   path(); g.strokeStyle = "#00d35a"; g.lineWidth = 2.5; g.lineJoin = "round"; g.stroke();
@@ -75,22 +133,55 @@ function drawEquity(canvas) {
     if (ty < 10) ty = y + 20 + (used.length % 3) * 14; used.push([x, ty]);
     g.fillStyle = col[m.kind]; g.beginPath(); g.arc(X(m.ts), y, 4.5, 0, 7); g.fill(); g.lineWidth = 4; g.strokeStyle = "#000"; g.lineJoin = "round"; g.strokeText(m.label, x, ty); g.fillText(m.label, x, ty);
   });
+  if (eqScrub != null && pts[eqScrub]) {
+    const p = pts[eqScrub];
+    crosshair(g, X(p.ts), Y(p.equity_usd), T - 10, H - B, "#00d35a");
+  }
+}
+
+function bindEquityScrub(canvas) {
+  bindPointerScrub(canvas, (e) => {
+    if (!eqGeom || !eqGeom.pts.length) return;
+    const x = e.clientX - canvas.getBoundingClientRect().left;
+    const i = nearest(eqGeom.pts.map((p) => eqGeom.X(p.ts)), x);
+    if (i === eqScrub) return;
+    eqScrub = i; haptic();
+    equityHeader(eqGeom.pts[i]);
+    drawEquity(canvas);
+  }, () => {
+    if (eqScrub == null) return;
+    eqScrub = null; equityHeader(null); drawEquity(canvas);
+  });
+}
+
+function candleHeader(c) {
+  const pxEl = $("#cdl-px"), chg = $("#cdl-chg");
+  if (!pxEl) return;
+  if (!c) {
+    pxEl.textContent = cdlLive != null ? "$" + px(cdlLive) : "—";
+    if (chg) { chg.hidden = true; chg.textContent = ""; }
+    return;
+  }
+  pxEl.textContent = "$" + px(c.c);
+  if (chg) { chg.hidden = false; chg.innerHTML = `<span>${esc(tscrub(c.t))}</span><span class="muted small">O ${px(c.o)}  H ${px(c.h)}  L ${px(c.l)}  C ${px(c.c)}</span>`; }
 }
 
 function drawCandles(canvas, coin) {
   const [g, W, H] = setup(canvas, 280), cs = coin.candles.candles;
   g.clearRect(0, 0, W, H);
   const font = getComputedStyle(document.body).fontFamily;
-  if (cs.length < 2) { g.fillStyle = "#8e8e93"; g.font = "14px " + font; g.textAlign = "center"; g.fillText(`Not enough price samples yet (${coin.candles.samples})`, W / 2, H / 2); return; }
+  if (cs.length < 2) { cdlGeom = null; g.fillStyle = "#8e8e93"; g.font = "14px " + font; g.textAlign = "center"; g.fillText(`Not enough price samples yet (${coin.candles.samples})`, W / 2, H / 2); return; }
   const pos = coin.position && !coin.position.closed ? coin.position : null;
   const vals = cs.flatMap((c) => [c.h, c.l]); if (pos && pos.stop_price) vals.push(pos.stop_price);
   let lo = Math.min(...vals), hi = Math.max(...vals); const pv = (hi - lo || hi * 0.01) * 0.12; lo -= pv; hi += pv;
   const volH = 50, T = 8, B = 18, L = 4, R = 54, ph = H - T - B - volH - 6;
   const Y = (v) => T + ph * (1 - (v - lo) / (hi - lo)), cw = (W - L - R) / cs.length, vmax = Math.max(...cs.map((c) => c.v), 1);
+  const X = (i) => L + cw * i + cw / 2;
+  cdlGeom = {pts: cs, X, Y, W, H, L, R, T, B, cw};
   g.strokeStyle = "rgba(84,84,88,.35)"; g.lineWidth = 1; g.fillStyle = "#8e8e93"; g.font = "10px " + font; g.textAlign = "left";
   for (let i = 0; i <= 3; i++) { const v = lo + (hi - lo) * i / 3, y = Y(v); g.beginPath(); g.moveTo(L, y); g.lineTo(W - R, y); g.stroke(); g.fillText(px(v), W - R + 4, y + 3); }
   cs.forEach((c, i) => {
-    const x = L + cw * i + cw / 2, up = c.c >= c.o, col = up ? "#00d35a" : "#ff453a";
+    const x = X(i), up = c.c >= c.o, col = up ? "#00d35a" : "#ff453a";
     g.strokeStyle = col; g.fillStyle = col; g.lineWidth = 1.2; g.beginPath(); g.moveTo(x, Y(c.h)); g.lineTo(x, Y(c.l)); g.stroke();
     const bt = Y(Math.max(c.o, c.c)), bh = Math.max(1.5, Math.abs(Y(c.o) - Y(c.c))); g.fillRect(x - cw * 0.34, bt, cw * 0.68, bh);
     g.globalAlpha = 0.45; const vh = volH * c.v / vmax; g.fillRect(x - cw * 0.34, H - B - vh, cw * 0.68, vh); g.globalAlpha = 1;
@@ -100,6 +191,25 @@ function drawCandles(canvas, coin) {
     g.fillStyle = "#ff9f0a"; g.font = "600 11px " + font; g.textAlign = "left"; g.fillText("Risk trailing stop", L + 4, y - 5);
   }
   g.fillStyle = "#8e8e93"; g.font = "10px " + font; g.textAlign = "left"; g.fillText(tfmt(cs[0].t), L, H - 4); g.textAlign = "right"; g.fillText(tfmt(cs[cs.length - 1].t), W - R, H - 4);
+  if (cdlScrub != null && cs[cdlScrub]) {
+    const c = cs[cdlScrub], x = X(cdlScrub);
+    crosshair(g, x, Y(c.c), T, H - B, c.c >= c.o ? "#00d35a" : "#ff453a");
+  }
+}
+
+function bindCandleScrub(canvas, coin) {
+  bindPointerScrub(canvas, (e) => {
+    if (!cdlGeom || !cdlGeom.pts.length) return;
+    const x = e.clientX - canvas.getBoundingClientRect().left;
+    const i = nearest(cdlGeom.pts.map((_, i) => cdlGeom.X(i)), x);
+    if (i === cdlScrub) return;
+    cdlScrub = i; haptic();
+    candleHeader(cdlGeom.pts[i]);
+    drawCandles(canvas, coin);
+  }, () => {
+    if (cdlScrub == null) return;
+    cdlScrub = null; candleHeader(null); drawCandles(canvas, coin);
+  });
 }
 
 // ---------- auditor discs
@@ -146,7 +256,7 @@ function viewHome() {
   $("#view").innerHTML = `
   <div class="top"><span>FOMO Desk</span><span><span class="dot ${age < STALE_S ? "run" : "err"}"></span>${age < STALE_S ? "snapshot " : "STALE snapshot "}${ago(s.generated_at)}</span></div>
   <div class="balrow"><div class="bal" id="bal"></div><span class="pill org">PAPER</span></div>
-  <div class="chg"><span class="${up ? "up" : "dn"}">${up ? "+" : ""}${num(p.today_pct)}% today</span><span class="pill ${p.multiple >= 1 ? "grn" : "red"}">${num(p.multiple, Math.abs(p.multiple - 1) < 0.01 ? 3 : 2)}×</span><span class="muted small">start ${money(p.start_usd)}</span></div>
+  <div class="chg"><span id="chg-pct" class="${up ? "up" : "dn"}">${up ? "+" : ""}${num(p.today_pct)}% today</span><span id="chg-pill" class="pill ${p.multiple >= 1 ? "grn" : "red"}">${num(p.multiple, Math.abs(p.multiple - 1) < 0.01 ? 3 : 2)}×</span><span id="chg-sub" class="muted small">start ${money(p.start_usd)}</span></div>
   <div class="chart-wrap"><canvas id="eq"></canvas></div>
   <div class="ranges">${Object.keys(RANGES).map((r) => `<button data-r="${r}" class="${r === range ? "on" : ""}">${r}</button>`).join("")}</div>
   <h2>Agents · ${run} running</h2>
@@ -155,9 +265,11 @@ function viewHome() {
   <h2>Activity <a href="#activity">See all</a></h2>
   <div class="card pad0">${D.activity.events.slice(0, 5).map(evRow).join("") || '<div class="empty">No activity yet</div>'}</div>
   <p class="muted small" style="text-align:center;margin-top:18px">PAPER only · simulated money · no real orders</p>`;
+  eqScrub = null;
   odometer($("#bal"), money(p.equity_usd));
   drawEquity($("#eq"));
-  document.querySelectorAll(".ranges button").forEach((b) => b.onclick = () => { range = b.dataset.r; document.querySelectorAll(".ranges button").forEach((x) => x.classList.toggle("on", x === b)); drawEquity($("#eq")); });
+  bindEquityScrub($("#eq"));
+  document.querySelectorAll(".ranges button").forEach((b) => b.onclick = () => { eqScrub = null; equityHeader(null); range = b.dataset.r; document.querySelectorAll(".ranges button").forEach((x) => x.classList.toggle("on", x === b)); drawEquity($("#eq")); });
 }
 
 function viewAgents() {
@@ -238,7 +350,8 @@ function viewCoin(mint) {
   const p = c.position, open = p && !p.closed, last = open ? p.last_price : (c.candles.candles.length ? c.candles.candles[c.candles.candles.length - 1].c : null);
   $("#view").innerHTML = `<a class="back" href="#home">‹ Back</a>
   <div style="display:flex;justify-content:space-between;align-items:center"><h1 style="margin:0">${esc(c.symbol || mint.slice(0, 6))}</h1><span class="pill mono">${esc(c.status)}</span></div>
-  <div class="big2" style="margin-top:6px">${last != null ? "$" + px(last) : "—"}</div>
+  <div class="big2" id="cdl-px" style="margin-top:6px">${last != null ? "$" + px(last) : "—"}</div>
+  <div class="chg" id="cdl-chg" hidden></div>
   <div class="muted small">${esc(c.name || "")}${c.final_reason ? " · " + esc(c.final_reason) : ""}</div>
   <div class="card" style="padding:8px 4px 4px;margin-top:12px"><canvas id="cdl"></canvas><div class="note" style="padding:4px 10px 0">${c.candles.bucket_s ? "Candles " + c.candles.bucket_s + "s · " : ""}volume: ${esc(c.candles.volume_note || "DexScreener 5m volume")}</div></div>
   <h2>Your position</h2>
@@ -251,7 +364,10 @@ function viewCoin(mint) {
   ${c.audit ? `<a class="btn c" href="#audit/${mint}">Auditor · ${c.audit.verdict === "pass" ? "8/8" : "refused"} ›</a>` : ""}
   <a class="btn g" href="${esc(c.fomo_url)}" target="_blank" rel="noopener">Buy on FOMO</a>
   ${open ? `<a class="btn r" href="${esc(c.fomo_url)}" target="_blank" rel="noopener">Sell on FOMO</a>` : ""}`;
+  cdlScrub = null;
+  cdlLive = last;
   drawCandles($("#cdl"), c);
+  bindCandleScrub($("#cdl"), c);
 }
 
 // ---------- router
@@ -268,6 +384,7 @@ window.addEventListener("hashchange", route);
 window.addEventListener("resize", () => { const c = $("#eq"); if (c) drawEquity(c); const d = $("#cdl"); if (d && location.hash.startsWith("#coin/")) drawCandles(d, D.coins.coins[location.hash.split("/")[1]]); });
 
 async function refresh(first) {
+  if (!first && scrubbing()) return;
   try { await load(); window.__keepScroll = !first; route(); window.__keepScroll = false; }
   catch (e) { if (first) $("#view").innerHTML = `<div class="empty">Can't load the snapshot yet.</div>`; }
 }

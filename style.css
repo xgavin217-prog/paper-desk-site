@@ -22,8 +22,9 @@ h2 a{font:500 15px var(--text);color:var(--blu)}
 .pill.mono{font-family:var(--mono);background:var(--c2);color:var(--tx);font-weight:500}.pill.cyn{background:rgba(100,210,255,.16);color:var(--cyn)}
 .chg{margin-top:6px;font-size:15px;display:flex;gap:10px;align-items:center}
 .up{color:var(--grn)}.dn{color:var(--red)}
-.chart-wrap{margin:14px -4px 0}
+.chart-wrap{margin:14px -4px 0;touch-action:none;-webkit-user-select:none;user-select:none}
 canvas{display:block;width:100%}
+canvas.scrub{touch-action:none;cursor:crosshair;-webkit-user-select:none;user-select:none}
 .ranges{display:flex;justify-content:space-between;margin:8px 0 0;padding:0 2px}
 .ranges button{background:none;border:0;color:var(--mut);font:600 13px var(--text);padding:6px 10px;border-radius:99px}
 .ranges button.on{background:var(--grn);color:#000}
