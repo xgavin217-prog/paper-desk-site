@@ -3,7 +3,8 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<meta name="theme-color" content="#0b0e14">
+<meta name="theme-color" content="#000000">
+<meta name="color-scheme" content="dark">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
@@ -15,33 +16,14 @@
 <title>FOMO Desk (PAPER)</title>
 </head>
 <body>
-<div id="app" class="screen">
-  <header>
-    <div><b>FOMO Desk</b> <span class="badge">PAPER</span></div>
-    <div class="muted small"><span id="dot" class="dot"></span><span id="hb">loading…</span></div>
-  </header>
-  <section class="card">
-    <div class="muted small">PAPER balance (fictitious USD)</div>
-    <div id="bal" class="big">—</div>
-    <div class="small"><span id="pnl">—</span> <span class="muted">· start <span id="start">—</span></span></div>
-    <canvas id="chart" width="640" height="220"></canvas>
-    <div id="note" class="muted small"></div>
-  </section>
-  <section class="card">
-    <h2>Agents</h2>
-    <ul id="agents" class="list"></ul>
-  </section>
-  <section class="card">
-    <h2>Open PAPER positions</h2>
-    <div id="pos" class="muted small">None</div>
-  </section>
-  <section class="card">
-    <h2>Events</h2>
-    <ul id="events" class="list small"></ul>
-  </section>
-  <footer class="muted small">PAPER only · no live orders · read-only static snapshot, refreshed about every 10 min.<br>
-  This page is public and has no login: static hosting cannot enforce one. It shows only fictitious paper data.</footer>
-</div>
+<div id="banner" class="banner hidden"></div>
+<main id="view"></main>
+<nav id="tabbar" aria-label="Main">
+  <a href="#home" data-tab="home"><svg viewBox="0 0 24 24"><path d="M3 11.5 12 4l9 7.5V20a1 1 0 0 1-1 1h-5v-6H9v6H4a1 1 0 0 1-1-1z"/></svg><span>Home</span></a>
+  <a href="#agents" data-tab="agents"><svg viewBox="0 0 24 24"><circle cx="8" cy="8" r="3.2"/><circle cx="16.5" cy="9" r="2.6"/><path d="M2.5 19c.4-3.4 2.8-5.2 5.5-5.2s5.1 1.800 5.5 5.200zM14 14.200c.8-.3 1.600-.4 2.500-.4 2.400 0 4.400 1.500 5 4.600H15"/></svg><span>Agents</span></a>
+  <a href="#activity" data-tab="activity"><svg viewBox="0 0 24 24"><path d="M3 12h4l2.500-6 4 12 2.500-6H21"/></svg><span>Activity</span></a>
+  <a href="#account" data-tab="account"><svg viewBox="0 0 24 24"><circle cx="12" cy="8" r="4"/><path d="M4 21c.6-4.300 3.800-6.500 8-6.500s7.400 2.200 8 6.500z"/></svg><span>Account</span></a>
+</nav>
 <script src="app.js"></script>
 </body>
 </html>
