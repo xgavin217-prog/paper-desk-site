@@ -1,0 +1,47 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#0b0e14">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="FOMO Desk">
+<link rel="manifest" href="manifest.json">
+<link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
+<link rel="icon" href="icons/icon-192.png">
+<link rel="stylesheet" href="style.css">
+<title>FOMO Desk (PAPER)</title>
+</head>
+<body>
+<div id="app" class="screen">
+  <header>
+    <div><b>FOMO Desk</b> <span class="badge">PAPER</span></div>
+    <div class="muted small"><span id="dot" class="dot"></span><span id="hb">loading…</span></div>
+  </header>
+  <section class="card">
+    <div class="muted small">PAPER balance (fictitious USD)</div>
+    <div id="bal" class="big">—</div>
+    <div class="small"><span id="pnl">—</span> <span class="muted">· start <span id="start">—</span></span></div>
+    <canvas id="chart" width="640" height="220"></canvas>
+    <div id="note" class="muted small"></div>
+  </section>
+  <section class="card">
+    <h2>Agents</h2>
+    <ul id="agents" class="list"></ul>
+  </section>
+  <section class="card">
+    <h2>Open PAPER positions</h2>
+    <div id="pos" class="muted small">None</div>
+  </section>
+  <section class="card">
+    <h2>Events</h2>
+    <ul id="events" class="list small"></ul>
+  </section>
+  <footer class="muted small">PAPER only · no live orders · read-only static snapshot, refreshed about every 10 min.<br>
+  This page is public and has no login: static hosting cannot enforce one. It shows only fictitious paper data.</footer>
+</div>
+<script src="app.js"></script>
+</body>
+</html>
