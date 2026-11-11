@@ -54,7 +54,7 @@ function drawEquity(canvas) {
   g.clearRect(0, 0, W, H);
   if (!pts.length) { g.fillStyle = "#8e8e93"; g.font = "14px " + getComputedStyle(document.body).fontFamily; g.textAlign = "center"; g.fillText("No balance data in this range", W / 2, H / 2); return; }
   const start = D.chart.start_usd, last = pts[pts.length - 1];
-  const x0 = span === Infinity ? pts[0].ts : now - span, x1 = Math.max(now, last.ts);
+  const x0 = pts[0].ts, x1 = Math.max(now, last.ts);
   const ys = pts.map((p) => p.equity_usd).concat([start]);
   let lo = Math.min(...ys), hi = Math.max(...ys); const padv = Math.max((hi - lo) * 0.2, 0.5); lo -= padv; hi += padv;
   const L = 6, R = 6, T = 26, B = 16;
@@ -73,7 +73,7 @@ function drawEquity(canvas) {
     let x = Math.min(Math.max(X(m.ts), 40), W - 40), y = Y(eqAt), ty = y - 12;
     while (used.some((u) => Math.abs(u[0] - x) < 70 && Math.abs(u[1] - ty) < 14)) ty -= 14;
     if (ty < 10) ty = y + 20 + (used.length % 3) * 14; used.push([x, ty]);
-    g.fillStyle = col[m.kind]; g.beginPath(); g.arc(X(m.ts), y, 4.5, 0, 7); g.fill(); g.fillText(m.label, x, ty);
+    g.fillStyle = col[m.kind]; g.beginPath(); g.arc(X(m.ts), y, 4.5, 0, 7); g.fill(); g.lineWidth = 4; g.strokeStyle = "#000"; g.lineJoin = "round"; g.strokeText(m.label, x, ty); g.fillText(m.label, x, ty);
   });
 }
 
@@ -106,7 +106,7 @@ function drawCandles(canvas, coin) {
 let anim = null;
 function drawDiscs(canvas, layers, animate) {
   cancelAnimationFrame(anim);
-  const [g, W, H] = setup(canvas, 300), cx = W / 2, rx = 92, ry = 20, th = 13, gap = 33, top = 40;
+  const [g, W, H] = setup(canvas, 300), rx = 66, ry = 13, th = 10, gap = 33, top = 34, cx = rx + 22;
   const checked = layers.findIndex((l) => l.status === "grey"); const nChecked = checked === -1 ? 8 : checked;
   const reduce = window.matchMedia("(prefers-reduced-motion: reduce)").matches; const t0 = performance.now(), per = 380;
   const font = getComputedStyle(document.body).fontFamily;
@@ -124,11 +124,11 @@ function drawDiscs(canvas, layers, animate) {
       g.beginPath(); g.ellipse(cx, y, rx, ry, 0, 0, 7); g.fill(); g.strokeStyle = edge; g.stroke();
       g.fillStyle = st === "grey" ? "#8e8e93" : "#fff"; g.font = "700 12px " + font; g.textAlign = "center"; g.textBaseline = "middle";
       g.fillText(read && st !== "grey" ? (st === "green" ? "✓" : "✕") : String(i + 1), cx, y + 1);
-      g.textAlign = "left"; g.fillStyle = "#8e8e93"; g.font = "11px " + font; g.fillText(layers[i].name, cx + rx + 8 > W - 90 ? cx + rx - 150 : cx + rx + 8, y + 1);
+      g.textAlign = "left"; g.fillStyle = "#8e8e93"; g.font = "11px " + font; g.fillText(`${i + 1}  ${layers[i].name}`, cx + rx + 16, y + 1);
     }
     g.textBaseline = "alphabetic";
     if (animate && !reduce && prog < nChecked + 0.4) { // cyan beam reading each layer
-      const by = top + Math.min(prog, 7.4) * gap; g.fillStyle = "rgba(100,210,255,.16)"; g.fillRect(cx - rx, 10, rx * 2, by - 10);
+      const by = top + Math.min(prog, 7.4) * gap; g.fillStyle = "rgba(100,210,255,.16)"; g.fillRect(cx - rx, 8, rx * 2, by - 8);
       g.strokeStyle = "#64d2ff"; g.lineWidth = 2; g.beginPath(); g.ellipse(cx, by, rx + 6, ry + 3, 0, 0, 7); g.stroke();
       anim = requestAnimationFrame(frame);
     }
@@ -146,7 +146,7 @@ function viewHome() {
   $("#view").innerHTML = `
   <div class="top"><span>FOMO Desk</span><span><span class="dot ${age < STALE_S ? "run" : "err"}"></span>${age < STALE_S ? "snapshot " : "STALE snapshot "}${ago(s.generated_at)}</span></div>
   <div class="balrow"><div class="bal" id="bal"></div><span class="pill org">PAPER</span></div>
-  <div class="chg"><span class="${up ? "up" : "dn"}">${up ? "+" : ""}${num(p.today_pct)}% today</span><span class="pill ${p.multiple >= 1 ? "grn" : "red"}">${num(p.multiple, 2)}×</span><span class="muted small">start ${money(p.start_usd)}</span></div>
+  <div class="chg"><span class="${up ? "up" : "dn"}">${up ? "+" : ""}${num(p.today_pct)}% today</span><span class="pill ${p.multiple >= 1 ? "grn" : "red"}">${num(p.multiple, Math.abs(p.multiple - 1) < 0.01 ? 3 : 2)}×</span><span class="muted small">start ${money(p.start_usd)}</span></div>
   <div class="chart-wrap"><canvas id="eq"></canvas></div>
   <div class="ranges">${Object.keys(RANGES).map((r) => `<button data-r="${r}" class="${r === range ? "on" : ""}">${r}</button>`).join("")}</div>
   <h2>Agents · ${run} running</h2>
@@ -225,7 +225,7 @@ function viewCoin(mint) {
   ${p ? `<div class="card pad0"><div class="kv"><span class="muted">Status</span><span class="v">${open ? "open (PAPER)" : "closed: " + esc(p.close_reason)}</span></div>
     <div class="kv"><span class="muted">Entry</span><span class="v">${money(p.entry_usd)} @ ${px(p.entry_price)}</span></div>
     <div class="kv"><span class="muted">${open ? "Now" : "Exit"}</span><span class="v">${px(open ? p.last_price : p.exit_price)}</span></div>
-    <div class="kv"><span class="muted">P&amp;L</span><span class="v ${(p.pnl_usd || 0) >= 0 ? "up" : "dn"}">${(p.pnl_usd || 0) >= 0 ? "+" : ""}${money(p.pnl_usd || 0)} (${p.pnl_pct >= 0 ? "+" : ""}${num(p.pnl_pct)}%)</span></div>
+    <div class="kv"><span class="muted">P&amp;L (after entry fee)</span><span class="v ${(p.pnl_usd || 0) >= 0 ? "up" : "dn"}">${(p.pnl_usd || 0) >= 0 ? "+" : ""}${money(p.pnl_usd || 0)} · price ${p.pnl_pct >= 0 ? "+" : ""}${num(p.pnl_pct)}%</span></div>
     ${open ? `<div class="kv"><span class="muted">Risk stop</span><span class="v" style="color:var(--org)">${px(p.stop_price)} ${p.trailing ? "(trailing " + num(p.trail_pct, 0) + "%)" : "(-" + num(p.stop_pct, 0) + "%)"}</span></div>` : ""}</div>`
     : `<div class="card empty">No PAPER position in this coin.${c.signal ? " A push was sent." : ""}</div>`}
   ${c.audit ? `<a class="btn c" href="#audit/${mint}">Auditor · ${c.audit.verdict === "pass" ? "8/8" : "refused"} ›</a>` : ""}
