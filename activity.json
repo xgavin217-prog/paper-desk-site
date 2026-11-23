@@ -1,1 +1,1 @@
-{"mode":"PAPER","now":1795412110,"replay":null,"tz":"America/Los_Angeles","generated_at":1795412110,"events":[{"id":9771,"ts":1795397438.3480592,"kind":"executor","msg":"Executor: tickets bumped to $47.50 (stack $200.00 < min stack $593.75)","mint":null},{"id":9770,"ts":1795397437.5208056,"kind":"core","msg":"desk process started (PAPER)","mint":null}]}
+{"mode":"PAPER","now":1795412412,"replay":null,"tz":"America/Los_Angeles","generated_at":1795412412,"events":[]}
